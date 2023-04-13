@@ -6,11 +6,6 @@ import mmh3
 class Treatment(Enum):
     C = 0
     T1 = 1
-    T2 = 2
-    T3 = 3
-    T4 = 4
-    T5 = 5
-    T6 = 6
 
 
 class Split(Enum):
@@ -25,9 +20,7 @@ class Experiment:
     Represents a single A/B experiment. Assigns
     any user to one of the treatments based on
     experiment name and user ID.
-
     An example usage::
-
         experiment = Experiments.AA
         if experiment.assign(user) == Treatment.C:
             # do control actions
@@ -35,7 +28,6 @@ class Experiment:
         elif experiment.assign(user) == Treatment.T1:
             # do treatment actions
             ...
-
     """
 
     def __init__(self, name: str, split: Split):
@@ -57,14 +49,8 @@ class Experiments:
     """
 
     # TODO Seminar 6 step 5: Configure RECOMMENDERS A/B experiment
-
-    AA = Experiment("AA", Split.HALF_HALF)
-    STICKY_ARTIST = Experiment("STICKY_ARTIST", Split.HALF_HALF)
-    TOP_POP = Experiment("TOP_POP", Split.FOUR_WAY)
-    USER_BASED = Experiment("USER_BASED", Split.HALF_HALF)
-    PERSONALIZED = Experiment("PERSONALIZED", Split.HALF_HALF)
+    ULTRA_POWER = Experiment("ULTRA_POWER", Split.HALF_HALF)
     CONTEXTUAL = Experiment("CONTEXTUAL", Split.HALF_HALF)
-    RECOMMENDERS = Experiment("RECOMMENDERS", Split.SEVEN_WAY)
 
     def __init__(self):
-        self.experiments = [Experiments.RECOMMENDERS]
+        self.experiments = [Experiments.ULTRA_POWER]

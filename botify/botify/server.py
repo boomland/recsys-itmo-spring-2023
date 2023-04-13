@@ -11,11 +11,8 @@ from gevent.pywsgi import WSGIServer
 
 from botify.data import DataLogger, Datum
 from botify.experiment import Experiments, Treatment
-from botify.recommenders.random import Random
-from botify.recommenders.sticky_artist import StickyArtist
-from botify.recommenders.toppop import TopPop
-from botify.recommenders.indexed import Indexed
 from botify.recommenders.contextual import Contextual
+from botify.recommenders.ultra_power import UltraPower
 from botify.track import Catalog
 
 import numpy as np
@@ -27,23 +24,36 @@ app = Flask(__name__)
 app.config.from_file("config.json", load=json.load)
 api = Api(app)
 
-# TODO Seminar 6 step 3: Create redis DB with tracks with diverse recommendations
 tracks_redis = Redis(app, config_prefix="REDIS_TRACKS")
+tracks_redis_dnn_triplets = Redis(app, config_prefix="REDIS_TRACKS_DNN_TRIPLETS")
 tracks_with_diverse_recs_redis = Redis(app, config_prefix="REDIS_TRACKS_WITH_DIVERSE_RECS")
+
 artists_redis = Redis(app, config_prefix="REDIS_ARTIST")
 recommendations_redis = Redis(app, config_prefix="REDIS_RECOMMENDATIONS")
 recommendations_ub_redis = Redis(app, config_prefix="REDIS_RECOMMENDATIONS_UB")
 
 data_logger = DataLogger(app)
 
-# TODO Seminar 6 step 4: Upload tracks with diverse recommendations to redis DB
 catalog = Catalog(app).load(
-    app.config["TRACKS_CATALOG"], app.config["TOP_TRACKS_CATALOG"], app.config["TRACKS_WITH_DIVERSE_RECS_CATALOG"]
+    app.config["TRACKS_CATALOG"],
+    app.config["TOP_TRACKS_CATALOG"]
 )
-catalog.upload_tracks(tracks_redis.connection, tracks_with_diverse_recs_redis.connection)
+
+catalog.upload_tracks(tracks_redis.connection)
 catalog.upload_artists(artists_redis.connection)
-catalog.upload_recommendations(recommendations_redis.connection)
-catalog.upload_recommendations(recommendations_ub_redis.connection, "RECOMMENDATIONS_UB_FILE_PATH")
+catalog.upload_recommendations(recommendations_redis.connection,
+                               "RECOMMENDATIONS_FILE_PATH")
+
+catalog_ = Catalog(app).load(
+    app.config["TRACKS_WITH_DNN_RECS_CATALOG"],
+    app.config["TOP_TRACKS_CATALOG"]
+)
+
+catalog_.upload_tracks(tracks_redis.connection)
+catalog_.upload_artists(artists_redis.connection)
+catalog_.upload_recommendations(recommendations_redis.connection,
+                                "RECOMMENDATIONS_FILE_PATH")
+
 
 parser = reqparse.RequestParser()
 parser.add_argument("track", type=int, location="json", required=True)
@@ -57,7 +67,6 @@ class Hello(Resource):
             "message": "welcome to botify, the best toy music recommender",
         }
 
-
 class Track(Resource):
     def get(self, track: int):
         data = tracks_redis.connection.get(track)
@@ -66,31 +75,25 @@ class Track(Resource):
         else:
             abort(404, description="Track not found")
 
-
 class NextTrack(Resource):
     def post(self, user: int):
         start = time.time()
 
         args = parser.parse_args()
 
-        # TODO Seminar 6 step 6: Wire RECOMMENDERS A/B experiment
-        treatment = Experiments.RECOMMENDERS.assign(user)
+        treatment = Experiments.ULTRA_POWER.assign(user)
         if treatment == Treatment.T1:
-            recommender = StickyArtist(tracks_redis.connection, artists_redis.connection, catalog)
-        elif treatment == Treatment.T2:
-            recommender = TopPop(tracks_redis.connection, catalog.top_tracks[:100])
-        elif treatment == Treatment.T3:
-            recommender = Indexed(tracks_redis.connection, recommendations_ub_redis.connection, catalog)
-        elif treatment == Treatment.T4:
-            recommender = Indexed(tracks_redis.connection, recommendations_redis.connection, catalog)
-        elif treatment == Treatment.T5:
-            recommender = Contextual(tracks_redis.connection, catalog)
-        elif treatment == Treatment.T6:
-            recommender = Contextual(tracks_with_diverse_recs_redis.connection, catalog)
+            recommender = UltraPower(tracks_redis_dnn_triplets.connection,
+                                     recommendations_redis.connection,
+                                     catalog_.top_tracks[:100],
+                                     catalog_)
         else:
-            recommender = Random(tracks_redis.connection)
+            recommender = Contextual(tracks_redis.connection,
+                                     catalog)
 
-        recommendation = recommender.recommend_next(user, args.track, args.time)
+        recommendation = recommender.recommend_next(user,
+                                                    args.track,
+                                                    args.time)
 
         data_logger.log(
             "next",
@@ -104,7 +107,6 @@ class NextTrack(Resource):
             ),
         )
         return {"user": user, "track": recommendation}
-
 
 class LastTrack(Resource):
     def post(self, user: int):
